@@ -29,7 +29,9 @@ final class FiEeReference implements ReferenceSchemeInterface
 
     public function generate(ReferenceInput $input): string
     {
-        $body = substr($input->digits(), 0, 19);
+        // The standard sets a minimum of 4 characters including the check digit,
+        // so a one- or two-digit order number has to be padded to reach it.
+        $body = str_pad(substr($input->digits(), 0, 19), 3, '0', STR_PAD_LEFT);
         return $body . self::check($body);
     }
 

@@ -47,7 +47,7 @@ final class UpnQrTest extends TestCase
     public function testRequiresSlovenianIbanAndSiOrRfReference(): void
     {
         $f = new UpnQr();
-        $acc = BankAccount::fromArray(['key' => 'x', 'holder' => 'H', 'iban' => 'HR1210010051863000160', 'formats' => ['upn']]);
+        $acc = BankAccount::fromArray(['key' => 'x', 'holder' => 'H', 'iban' => 'HR3799999990000000001', 'formats' => ['upn']]);
         self::assertNotNull($f->supports(new PaymentDetails($acc, 1.0, 'EUR', '1', 'HR00', true, 'p', '1')));
     }
 }

@@ -8,7 +8,9 @@ use Craft;
 use craft\base\Model;
 use craft\base\Plugin as BasePlugin;
 use craft\commerce\elements\Order;
+use craft\commerce\events\TransactionEvent;
 use craft\commerce\services\Gateways;
+use craft\commerce\services\Payments as CommercePayments;
 use craft\events\RegisterComponentTypesEvent;
 use craft\events\RegisterTemplateRootsEvent;
 use craft\web\twig\variables\CraftVariable;
@@ -41,7 +43,7 @@ use yii\base\Event;
  */
 class Plugin extends BasePlugin
 {
-    public string $schemaVersion = '1.0.0';
+    public string $schemaVersion = '1.0.1';
     public bool $hasCpSettings = true;
 
     public static function config(): array
@@ -52,7 +54,13 @@ class Plugin extends BasePlugin
                 'referenceSchemes' => ReferenceSchemes::class,
                 'formats' => static fn() => new Formats(self::getInstance()->getSettings()->epcForceBic),
                 'references' => static fn() => new References(self::getInstance()->accounts, self::getInstance()->referenceSchemes),
-                'codes' => static fn() => new Codes(self::getInstance()->formats, self::getInstance()->getSettings()->codeSize, self::getInstance()->accounts, self::getInstance()->references),
+                'codes' => static fn() => new Codes(
+                    self::getInstance()->formats,
+                    self::getInstance()->getSettings()->codeSize,
+                    self::getInstance()->accounts,
+                    self::getInstance()->references,
+                    static fn(string $message) => Craft::warning($message, 'bank-transfer-payment-codes'),
+                ),
                 'payments' => static fn() => new Payments(self::getInstance()->references, self::getInstance()->getSettings()),
                 'emailEmbedder' => EmailEmbedder::class,
             ],
@@ -74,6 +82,13 @@ class Plugin extends BasePlugin
             if ($order->getGateway() instanceof BankTransferGateway) {
                 self::getInstance()->references->ensure($order);
             }
+        });
+
+        // Commerce's own CP Capture button captures the authorisation directly,
+        // without going through markPaid(); pick it up here so the paid order
+        // status and EVENT_AFTER_MARK_PAID apply to that path too.
+        Event::on(CommercePayments::class, CommercePayments::EVENT_AFTER_CAPTURE_TRANSACTION, static function(TransactionEvent $e) {
+            self::getInstance()->payments->afterCpCapture($e->transaction);
         });
 
         Event::on(CraftVariable::class, CraftVariable::EVENT_INIT, static function(Event $e) {

@@ -53,9 +53,9 @@ account the store can pay into:
 | Column | Notes |
 |---|---|
 | Key | short id used for `codes(order, accountKey)` and for the `storeAccounts` / `currencyAccounts` routing rows |
-| Account holder (legal name) | the exact name your bank has on file; Verification of Payee compares it |
-| IBAN | validated by its mod-97 checksum |
-| BIC | required outside the EEA, optional inside it (unless "Force BIC" is on) |
+| Account holder (legal name) | the exact name your bank has on file; Verification of Payee compares it; accepts `$ENV_VAR` |
+| IBAN | validated by its mod-97 checksum; accepts `$ENV_VAR` |
+| BIC | required outside the EEA, optional inside it (unless "Force BIC" is on); accepts `$ENV_VAR` |
 | Currency | account settlement currency, default `EUR` |
 | Formats | space or comma separated format handles: `epc`, `hub3`, `upn`, `paybysquare` |
 | Reference scheme | `auto` (by IBAN country) or a specific scheme handle |
@@ -67,9 +67,15 @@ is a single plugin-level setting, not a per-account column, see below.
 `BankAccount::$purposeTemplate` is `null` by default; a per-account
 override set in PHP wins over the plugin setting for that account.
 
+Holder, IBAN and BIC accept environment variables and aliases (`$BANK_IBAN`),
+resolved both when the settings are validated and when an account is used, so
+the real values can stay out of project config.
+
 Account routing, most specific first: an explicit override (a `btpcAccount`
 field on the order, if you add one), then a currency mapping, then a store
-mapping, then the default account, then the first configured account.
+mapping, then the default account, then the first configured account. The
+currency mapping keys on the order's own base currency, the one the printed
+amount is in, not on the payment currency.
 
 ### Settings
 
@@ -102,14 +108,25 @@ mapping, then the default account, then the first configured account.
 |---|---|---|---|
 | `hr00` | HR (default) | order number digits | none |
 | `hr01` | HR (opt-in) | order number digits | ISO 7064 MOD 11,10 |
-| `si12` | SI | 12-digit number | ISO 7064 MOD 11,10 |
+| `si12` | SI | 12-digit number | MOD 11, weights 2 to 13 from the right, a result of 10 or 11 becomes 0 |
 | `be` | BE | `+++XXX/XXXX/XXXCC+++` | mod 97 on the first 10 digits, 0 becomes 97 |
 | `fi` | FI, EE | up to 19 or 20 digits | weights 7, 3, 1 from the right |
 | `sk` | SK | variable symbol, up to 10 digits | none |
 | `rf` | any (the fallback for everything else) | `RF` + 2 check digits + up to 21 characters | ISO 11649 mod 97 |
 
-Digits come from the order number, or the order id when the number carries
-none. `auto` on a bank account picks the scheme by the account's IBAN
+Digits come from the order number when that number is entirely digits, and
+from the order id otherwise. A Commerce order number is a 32-character hex
+string by default, and filtering the letters out of one would let two
+different orders reduce to the same reference, so anything that is not a
+plain number falls back to the id, which is unique and stable. The stored
+reference is globally unique, enforced by a database index, because an
+incoming bank line is matched without knowing which account it was paid into.
+If a reference is taken, the plugin tries the bare order id and then the id
+with a `1` to `9` suffix, the way Commerce itself resolves a clashing order
+reference. In the pathological case where all of those are taken too, the
+order completes without a payment code and the reason is written to the Craft
+log, rather than failing the customer's checkout.
+`auto` on a bank account picks the scheme by the account's IBAN
 country; anything not listed above (FR, ES, PT, IT, IE, GR, the Baltics,
 ...) falls back to `rf`.
 
@@ -214,7 +231,7 @@ if ($result->ok) {
     // $result->status === 'paid'
 } else {
     // 'underpaid', 'overpaid', 'already_paid', 'not_found', 'wrong_gateway',
-    // 'no_transaction' or 'capture_failed'; $result->message explains it
+    // 'no_transaction', 'capture_failed' or 'locked'; $result->message explains it
 }
 ```
 
@@ -225,8 +242,21 @@ every registered scheme's normalised form. Pass `null` for `$amount` to
 trust the caller outright, or a value compared against the outstanding
 balance within the configured tolerance. `$source` is recorded on the
 capture transaction's note (`cp`, `api`, `camt`, `erp`, or your own label)
-and passed through to `Payments::EVENT_AFTER_MARK_PAID`. Commerce's own CP
-Capture button on a bank-transfer order routes through this same method.
+and passed through to `Payments::EVENT_AFTER_MARK_PAID`.
+
+Commerce's own CP Capture button does not call `markPaid()`; it captures the
+authorisation directly. The plugin listens for that capture and applies the
+same tail, so the configured paid order status is set and
+`EVENT_AFTER_MARK_PAID` fires with source `cp`. The amount and tolerance
+checks are `markPaid()`'s own and do not apply to a CP capture, which is
+deliberate: a human clicking Capture has already decided.
+
+One mark-paid runs per order at a time, guarded by a mutex; a concurrent
+call returns status `locked` rather than capturing twice.
+
+Codes and mark-paid work in the order's own base currency and its
+outstanding balance, not in a payment-currency conversion, because the bank
+account settles in the store currency.
 
 The other services, `accounts`, `references`, `codes`, take and return
 typed values only, no request objects, so they are straightforward to call

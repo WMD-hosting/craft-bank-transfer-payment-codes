@@ -6,6 +6,7 @@ namespace wmd\banktransferpaymentcodes\models;
 
 use Craft;
 use craft\base\Model;
+use craft\helpers\App;
 
 /**
  * Plugin settings. Strings accept environment variables (`$BANK_IBAN`).
@@ -68,6 +69,27 @@ class Settings extends Model
      */
     public string $purposeTemplate = 'Order {number}';
 
+    /**
+     * Resolves `$VARIABLE` and alias syntax on the three account columns a
+     * merchant would sensibly keep out of project config. Validation and
+     * {@see \wmd\banktransferpaymentcodes\services\Accounts::all()} both go
+     * through here, so an `$IBAN` row validates against the resolved value
+     * instead of failing the mod-97 check on the literal `$IBAN` string and
+     * locking the settings page. The stored setting keeps the raw token.
+     *
+     * @param array<string, mixed> $row
+     * @return array<string, mixed>
+     */
+    public static function parseEnvRow(array $row): array
+    {
+        foreach (['holder', 'iban', 'bic'] as $key) {
+            if (isset($row[$key]) && is_string($row[$key])) {
+                $row[$key] = (string)App::parseEnv($row[$key]);
+            }
+        }
+        return $row;
+    }
+
     public function rules(): array
     {
         return [
@@ -84,7 +106,7 @@ class Settings extends Model
                 // the CP shows nothing and the admin gets a silent save failure.
                 $keys = [];
                 foreach ($this->accounts as $i => $row) {
-                    $account = BankAccount::fromArray($row);
+                    $account = BankAccount::fromArray(self::parseEnvRow($row));
                     foreach ($account->validationErrors() as $field => $message) {
                         $this->addError("accounts[$i][$field]", $message);
                         $this->addError($attribute, Craft::t('bank-transfer-payment-codes', 'Row {row}, {field}: {message}', [

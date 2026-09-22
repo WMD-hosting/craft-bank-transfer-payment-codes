@@ -17,6 +17,8 @@ use wmd\banktransferpaymentcodes\rendering\QrRenderer;
 final class EpcQr implements FormatInterface
 {
     private const MAX_BYTES = 331;
+    /** EPC069-12 field length of the unstructured remittance line. */
+    private const MAX_CHARS = 140;
 
     public function __construct(private readonly bool $forceBic = false)
     {
@@ -49,6 +51,12 @@ final class EpcQr implements FormatInterface
         if ($this->needsBic($d->account->country()) && $d->account->bic === '') {
             return 'BIC is required for this account.';
         }
+        if ($d->referenceIsStructured && mb_strlen(self::clean($d->reference)) > 35) {
+            // Truncating a structured creditor reference breaks its check digits,
+            // so the bank would reject the payment or apply it to nothing. The
+            // free-text field below is shortened happily; this one is not.
+            return 'Structured reference exceeds the 35-character EPC limit.';
+        }
         return null;
     }
 
@@ -58,6 +66,13 @@ final class EpcQr implements FormatInterface
             throw new FormatException($reason);
         }
         $withBic = $this->needsBic($d->account->country());
+        // Purpose first: a payer scanning this sees "Order 1234 12345678" in
+        // their banking app rather than a bare run of digits. The reference is
+        // the half that identifies the payment, so only the purpose is ever
+        // shortened; $purpose is the shrinkable budget, $tail is untouchable.
+        $tail = $d->referenceIsStructured ? '' : self::clean($d->reference);
+        $purpose = $d->referenceIsStructured ? '' : self::clean($d->purpose);
+        $purpose = self::fitPurpose($purpose, $tail, self::MAX_CHARS);
         $lines = [
             'BCD',
             $withBic ? '001' : '002',
@@ -68,18 +83,25 @@ final class EpcQr implements FormatInterface
             $d->account->iban,
             'EUR' . self::amount($d->amount),
             '',
-            $d->referenceIsStructured ? mb_substr(self::clean($d->reference), 0, 35) : '',
-            $d->referenceIsStructured ? '' : mb_substr(self::clean($d->reference !== '' ? $d->reference : $d->purpose), 0, 140),
+            $d->referenceIsStructured ? self::clean($d->reference) : '',
+            self::remittance($purpose, $tail),
         ];
         $payload = self::join($lines);
-        // Shrink the free text until the byte budget fits.
-        while (strlen($payload) > self::MAX_BYTES && $lines[10] !== '') {
-            $lines[10] = mb_substr($lines[10], 0, mb_strlen($lines[10]) - 1);
+        // Shrink until the byte budget fits: the payment purpose first.
+        while (strlen($payload) > self::MAX_BYTES && $purpose !== '') {
+            $purpose = mb_substr($purpose, 0, mb_strlen($purpose) - 1);
+            $lines[10] = self::remittance($purpose, $tail);
             $payload = self::join($lines);
         }
-        // If still over budget, shrink the beneficiary name.
+        // Then the beneficiary name; Verification of Payee wants it whole, but a
+        // shortened name still reaches the right account, a broken reference does not.
         while (strlen($payload) > self::MAX_BYTES && mb_strlen($lines[5]) > 1) {
             $lines[5] = mb_substr($lines[5], 0, mb_strlen($lines[5]) - 1);
+            $payload = self::join($lines);
+        }
+        // Only now, as a last resort, the reference itself.
+        while (strlen($payload) > self::MAX_BYTES && $lines[10] !== '') {
+            $lines[10] = mb_substr($lines[10], 0, mb_strlen($lines[10]) - 1);
             $payload = self::join($lines);
         }
         if (strlen($payload) > self::MAX_BYTES) {
@@ -96,6 +118,21 @@ final class EpcQr implements FormatInterface
     public function png(string $payload, int $size): string
     {
         return QrRenderer::png($payload, $size, 'UTF-8', false, null);
+    }
+
+    /** The unstructured remittance line: purpose, then the reference. */
+    private static function remittance(string $purpose, string $tail): string
+    {
+        return trim($purpose . ' ' . $tail);
+    }
+
+    /** As much of the purpose as fits beside the reference within $max characters. */
+    private static function fitPurpose(string $purpose, string $tail, int $max): string
+    {
+        while ($purpose !== '' && mb_strlen(self::remittance($purpose, $tail)) > $max) {
+            $purpose = mb_substr($purpose, 0, mb_strlen($purpose) - 1);
+        }
+        return trim($purpose);
     }
 
     /** Drop the trailing empty fields and join with LF; the last field carries no separator. */

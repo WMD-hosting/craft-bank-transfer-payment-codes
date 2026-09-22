@@ -5,6 +5,7 @@ namespace wmd\banktransferpaymentcodes\tests\unit\formats;
 
 use PHPUnit\Framework\TestCase;
 use wmd\banktransferpaymentcodes\formats\EpcQr;
+use wmd\banktransferpaymentcodes\formats\FormatException;
 use wmd\banktransferpaymentcodes\models\BankAccount;
 use wmd\banktransferpaymentcodes\models\PaymentDetails;
 
@@ -12,20 +13,76 @@ final class EpcQrTest extends TestCase
 {
     private function details(array $account = [], float $amount = 12.34, string $currency = 'EUR', string $reference = 'RF281000123', bool $structured = true, string $purpose = 'Order 1000123'): PaymentDetails
     {
-        $acc = BankAccount::fromArray($account + ['key' => 'main', 'holder' => 'HENA COM d.o.o.', 'iban' => 'HR1210010051863000160', 'formats' => ['epc']]);
+        $acc = BankAccount::fromArray($account + ['key' => 'main', 'holder' => 'HENA COM d.o.o.', 'iban' => 'HR3799999990000000001', 'formats' => ['epc']]);
         return new PaymentDetails($acc, $amount, $currency, $reference, '', $structured, $purpose, '1000123');
     }
 
     public function testPayloadV002WithoutBicAndStructuredReference(): void
     {
-        $expected = "BCD\n002\n1\nSCT\n\nHENA COM d.o.o.\nHR1210010051863000160\nEUR12.34\n\nRF281000123";
+        $expected = "BCD\n002\n1\nSCT\n\nHENA COM d.o.o.\nHR3799999990000000001\nEUR12.34\n\nRF281000123";
         self::assertSame($expected, (new EpcQr())->payload($this->details()));
     }
 
-    public function testUnstructuredRemittanceGoesToLineEleven(): void
+    public function testUnstructuredRemittanceGoesToLineElevenWithThePurposeFirst(): void
     {
-        $expected = "BCD\n002\n1\nSCT\n\nHENA COM d.o.o.\nHR1210010051863000160\nEUR12.34\n\n\nOrder 1000123";
-        self::assertSame($expected, (new EpcQr())->payload($this->details(reference: 'Order 1000123', structured: false)));
+        $expected = "BCD\n002\n1\nSCT\n\nHENA COM d.o.o.\nHR3799999990000000001\nEUR12.34\n\n\nOrder 1000123 1000123";
+        self::assertSame($expected, (new EpcQr())->payload($this->details(reference: '1000123', structured: false)));
+    }
+
+    public function testUnstructuredRemittanceIsTrimmedTo140Characters(): void
+    {
+        $payload = (new EpcQr())->payload($this->details(reference: '1000123', structured: false, purpose: str_repeat('a', 200)));
+        self::assertSame(140, mb_strlen(explode("\n", $payload)[10]));
+    }
+
+    public function testLongPurposeIsShrunkButTheReferenceSurvives(): void
+    {
+        // 120 emoji fit inside the 140-character field but blow the 331-byte
+        // budget at 4 bytes each, so the purpose is shrunk from the right.
+        $payload = (new EpcQr())->payload($this->details(
+            reference: '1000123',
+            structured: false,
+            purpose: str_repeat("\u{1F600}", 120),
+        ));
+        $line = explode("\n", $payload)[10];
+        self::assertLessThanOrEqual(331, strlen($payload));
+        self::assertStringEndsWith(' 1000123', $line);
+        self::assertStringStartsWith("\u{1F600}", $line);
+        self::assertLessThan(120, mb_strlen($line) - mb_strlen(' 1000123'));
+        self::assertSame('HENA COM d.o.o.', explode("\n", $payload)[5]);
+    }
+
+    public function testAVeryLongPurposeIsCappedAt140CharactersWithTheReferenceIntact(): void
+    {
+        $payload = (new EpcQr())->payload($this->details(
+            reference: '1000123',
+            structured: false,
+            purpose: str_repeat('a', 400),
+        ));
+        $line = explode("\n", $payload)[10];
+        self::assertSame(140, mb_strlen($line));
+        self::assertStringEndsWith(' 1000123', $line);
+    }
+
+    public function testReferenceSurvivesEvenWhenTheBeneficiaryNameIsHuge(): void
+    {
+        $payload = (new EpcQr())->payload($this->details(
+            ['holder' => str_repeat("\u{1F600}", 80)],
+            reference: '1000123',
+            structured: false,
+            purpose: 'Order 1000123',
+        ));
+        self::assertLessThanOrEqual(331, strlen($payload));
+        self::assertStringEndsWith('1000123', $payload);
+    }
+
+    public function testStructuredReferenceOver35CharactersIsRefused(): void
+    {
+        $f = new EpcQr();
+        $d = $this->details(reference: str_repeat('9', 36));
+        self::assertNotNull($f->supports($d));
+        $this->expectException(FormatException::class);
+        $f->payload($d);
     }
 
     public function testBicIncludedForNonEeaIbanWithVersion001(): void

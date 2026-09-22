@@ -10,8 +10,8 @@ final class BankAccountTest extends TestCase
 {
     public function testFromArrayNormalisesIbanAndCountry(): void
     {
-        $a = BankAccount::fromArray(['key' => 'main', 'holder' => 'HENA COM d.o.o.', 'iban' => 'hr12 1001 0051 8630 0016 0', 'formats' => ['hub3', 'epc']]);
-        self::assertSame('HR1210010051863000160', $a->iban);
+        $a = BankAccount::fromArray(['key' => 'main', 'holder' => 'HENA COM d.o.o.', 'iban' => 'hr37 9999 9990 0000 0000 1', 'formats' => ['hub3', 'epc']]);
+        self::assertSame('HR3799999990000000001', $a->iban);
         self::assertSame('HR', $a->country());
         self::assertSame('EUR', $a->currency);
         self::assertNull($a->purposeTemplate);
@@ -42,7 +42,7 @@ final class BankAccountTest extends TestCase
 
     public function testUnknownFormatHandleIsRejected(): void
     {
-        $a = BankAccount::fromArray(['key' => 'main', 'holder' => 'HENA COM d.o.o.', 'iban' => 'HR1210010051863000160', 'formats' => ['epc', 'bogus']]);
+        $a = BankAccount::fromArray(['key' => 'main', 'holder' => 'HENA COM d.o.o.', 'iban' => 'HR3799999990000000001', 'formats' => ['epc', 'bogus']]);
         self::assertArrayHasKey('formats', $a->validationErrors());
     }
 }

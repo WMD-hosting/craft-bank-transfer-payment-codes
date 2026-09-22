@@ -26,11 +26,17 @@ class Codes extends Component
         'SK' => ['paybysquare', 'epc'],
     ];
 
+    /**
+     * @param ?\Closure(string): void $log where lenient skips are reported; the
+     *     plugin passes Craft::warning(), the unit tests pass nothing, which
+     *     keeps this service constructible without Craft.
+     */
     public function __construct(
         private readonly Formats $formats,
         private readonly int $size,
         private readonly ?Accounts $accounts = null,
         private readonly ?References $references = null,
+        private readonly ?\Closure $log = null,
         array $config = [],
     ) {
         parent::__construct($config);
@@ -49,6 +55,7 @@ class Codes extends Component
                 if ($strict) {
                     throw new FormatException("unknown format: $handle");
                 }
+                $this->warn($handle, 'not a registered format');
                 continue;
             }
             $format = $available[$handle];
@@ -57,11 +64,23 @@ class Codes extends Component
                 if ($strict) {
                     throw new FormatException("$handle: $reason");
                 }
+                $this->warn($handle, $reason);
                 continue;
             }
             $codes[] = new PaymentCode($format, $format->payload($details), $this->size);
         }
         return $codes;
+    }
+
+    /**
+     * A format silently dropping out of the list is the single hardest thing to
+     * diagnose from a live site, so lenient mode says why in the log.
+     */
+    private function warn(string $handle, string $reason): void
+    {
+        if ($this->log !== null) {
+            ($this->log)("Format $handle skipped: $reason");
+        }
     }
 
     /** @param string[] $handles @return string[] */
@@ -120,8 +139,13 @@ class Codes extends Component
         $purpose = strtr($template, ['{number}' => (string)($order->reference ?: $order->number), '{shortNumber}' => substr($order->number, 0, 7)]);
         return new PaymentDetails(
             $account,
+            // The order currency, not paymentCurrency: getOutstandingBalance() is
+            // denominated in the order's own currency, and the bank account
+            // settles in the store currency. Labelling that amount with the
+            // payment currency would print a converted-looking figure that no
+            // conversion was ever applied to.
             $order->getOutstandingBalance(),
-            $order->paymentCurrency ?: $order->currency,
+            $order->currency,
             $ref->reference,
             $ref->model,
             $ref->isStructured,

@@ -24,7 +24,7 @@ final class ReferenceSchemesTest extends TestCase
         $rf = new Rf();
         self::assertSame('RF18539007547034', $rf->generate($this->input('539007547034')));
         self::assertSame('RF712348231', $rf->generate($this->input('2348231')));
-        self::assertSame('RF281000123', $rf->generate($this->input('ORD-1000123')));
+        self::assertSame('RF281000123', $rf->generate($this->input('1000123')));
         self::assertTrue($rf->validate('RF18539007547034'));
         self::assertTrue($rf->validate('RF18 5390 0754 7034'));
         self::assertFalse($rf->validate('RF19539007547034'));
@@ -84,11 +84,19 @@ final class ReferenceSchemesTest extends TestCase
         self::assertFalse($fi->validate('12329'));
     }
 
+    public function testFinnishReferenceIsPaddedToTheFourCharacterMinimum(): void
+    {
+        $fi = new FiEeReference();
+        self::assertSame('0071', $fi->generate($this->input('7')));
+        self::assertSame('0424', $fi->generate($this->input('abc', 42)));
+        self::assertTrue($fi->validate('0071'));
+    }
+
     public function testSlovakVariableSymbolIsDigitsMaxTen(): void
     {
         $sk = new SkSymbols();
-        self::assertSame('2026001', $sk->generate($this->input('ORD-2026001')));
-        self::assertSame('1234567890', $sk->generate($this->input('123456789012')));  // truncated from the left
+        self::assertSame('2026001', $sk->generate($this->input('2026001')));
+        self::assertSame('1234567890', $sk->generate($this->input('123456789012')));  // keeps the first 10 digits
         self::assertTrue($sk->validate('2026001'));
         self::assertFalse($sk->validate('20A6'));
     }
@@ -97,5 +105,23 @@ final class ReferenceSchemesTest extends TestCase
     {
         self::assertSame((new Rf())->generate($this->input('42')), (new Rf())->generate($this->input('abc', 42)));
         self::assertSame('42', (new HrModel(false))->generate($this->input('abc', 42)));
+    }
+
+    public function testHexOrderNumberUsesTheOrderIdRatherThanItsDigits(): void
+    {
+        // '915a93b' would collapse to '91593' under a digit filter, and so would
+        // '9159b3' and '915b93' — different orders, one reference. The ID is unique.
+        $input = $this->input('915a93b', 2072);
+        self::assertSame('2072', $input->digits());
+        self::assertSame('2072', $input->fallbackDigits());
+        self::assertSame('2072', (new HrModel(false))->generate($input));
+        self::assertSame((new Rf())->generate($this->input('2072')), (new Rf())->generate($input));
+    }
+
+    public function testAllDigitOrderNumberIsUsedAsIs(): void
+    {
+        $input = $this->input('2026001', 2072);
+        self::assertSame('2026001', $input->digits());
+        self::assertSame('2072', $input->fallbackDigits());
     }
 }

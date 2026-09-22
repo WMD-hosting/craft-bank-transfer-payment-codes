@@ -4,6 +4,7 @@ declare(strict_types=1);
 namespace wmd\banktransferpaymentcodes\tests\unit\services;
 
 use PHPUnit\Framework\TestCase;
+use wmd\banktransferpaymentcodes\references\ReferenceInput;
 use wmd\banktransferpaymentcodes\references\ReferenceSchemes;
 use wmd\banktransferpaymentcodes\services\References;
 
@@ -51,5 +52,39 @@ final class ReferencesTest extends TestCase
     public function testBlankReferenceYieldsNoCandidates(): void
     {
         self::assertSame([], References::candidates('   ', $this->schemes()));
+    }
+
+    public function testAttemptsForAHexOrderNumberStartAtTheIdThenSuffix(): void
+    {
+        $digits = array_map(
+            static fn(ReferenceInput $i): string => $i->digits(),
+            References::attempts(new ReferenceInput('915a93b', 2072)),
+        );
+        // The first attempt already resolves to the bare id, so it is not repeated.
+        self::assertSame(
+            ['2072', '20721', '20722', '20723', '20724', '20725', '20726', '20727', '20728', '20729'],
+            $digits,
+        );
+    }
+
+    public function testAttemptsForANumericOrderNumberFallBackToTheIdBeforeSuffixing(): void
+    {
+        $digits = array_map(
+            static fn(ReferenceInput $i): string => $i->digits(),
+            References::attempts(new ReferenceInput('2026001', 2072)),
+        );
+        self::assertSame('2026001', $digits[0]);
+        self::assertSame('2072', $digits[1]);
+        self::assertSame('20721', $digits[2]);
+        self::assertSame('20729', end($digits));
+        self::assertCount(11, $digits);
+        self::assertSame($digits, array_values(array_unique($digits)));
+    }
+
+    public function testEveryAttemptKeepsTheOrderId(): void
+    {
+        foreach (References::attempts(new ReferenceInput('915a93b', 2072)) as $attempt) {
+            self::assertSame(2072, $attempt->orderId);
+        }
     }
 }

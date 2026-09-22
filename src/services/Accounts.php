@@ -25,7 +25,7 @@ class Accounts extends Component
     {
         $accounts = [];
         foreach ($this->settings->accounts as $row) {
-            $account = BankAccount::fromArray($row);
+            $account = BankAccount::fromArray(Settings::parseEnvRow($row));
             if ($account->key !== '') {
                 $accounts[$account->key] = $account;
             }
@@ -83,6 +83,7 @@ class Accounts extends Component
         if ($order->getFieldLayout()->getFieldByHandle('btpcAccount') !== null) {
             $override = (string)$order->getFieldValue('btpcAccount') ?: null;
         }
-        return $this->select($order->getStore()->handle, $order->paymentCurrency ?: $order->currency, $override);
+        // The order currency, matching the amount the codes carry; see Codes::detailsFor().
+        return $this->select($order->getStore()->handle, $order->currency, $override);
     }
 }

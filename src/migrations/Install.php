@@ -29,7 +29,9 @@ class Install extends Migration
             'uid' => $this->uid(),
         ]);
         $this->createIndex(null, self::TABLE, ['orderId'], true);
-        $this->createIndex(null, self::TABLE, ['normalised'], false);
+        // Globally unique: findOrder() resolves a reference without knowing the
+        // account, so a bank statement line must match at most one order.
+        $this->createIndex(null, self::TABLE, ['normalised'], true);
         $this->addForeignKey(null, self::TABLE, ['orderId'], '{{%commerce_orders}}', ['id'], 'CASCADE');
         return true;
     }

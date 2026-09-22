@@ -45,10 +45,16 @@ class BtpcVariable
         if ($account === null) {
             return [];
         }
+        // A missing or zero amount used to reach the formats as 0.00 and raise a
+        // PHP warning on the undefined key; there is nothing to pay, so stop here.
+        $amount = (float)($details['amount'] ?? 0);
+        if ($amount <= 0) {
+            return [];
+        }
         $scheme = $plugin->referenceSchemes->forAccount($account);
         $reference = (string)($details['reference'] ?? '');
         $number = (string)($details['number'] ?? '');
-        $d = new PaymentDetails($account, (float)$details['amount'], (string)($details['currency'] ?? 'EUR'), $reference, $scheme->model() ?? '', (bool)($details['structured'] ?? true), (string)($details['purpose'] ?? ''), $number);
+        $d = new PaymentDetails($account, $amount, (string)($details['currency'] ?? 'EUR'), $reference, $scheme->model() ?? '', (bool)($details['structured'] ?? true), (string)($details['purpose'] ?? ''), $number);
         $codes = $plugin->codes->forDetails($d);
         if ($number !== '') {
             foreach ($codes as $code) {

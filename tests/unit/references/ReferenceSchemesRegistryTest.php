@@ -17,7 +17,7 @@ final class ReferenceSchemesRegistryTest extends TestCase
     public function testAutoPicksNationalSchemeByIbanCountry(): void
     {
         $r = new ReferenceSchemes();
-        self::assertSame('HR00', $r->forAccount($this->account('HR1210010051863000160'))->model());
+        self::assertSame('HR00', $r->forAccount($this->account('HR3799999990000000001'))->model());
         self::assertSame('SI12', $r->forAccount($this->account('SI56020170014356205'))->model());
         self::assertSame('be', $r->forAccount($this->account('BE72000000001616'))->handle());
         self::assertSame('fi', $r->forAccount($this->account('FI2112345600000785'))->handle());
@@ -28,8 +28,8 @@ final class ReferenceSchemesRegistryTest extends TestCase
     public function testExplicitOverride(): void
     {
         $r = new ReferenceSchemes();
-        self::assertSame('HR01', $r->forAccount($this->account('HR1210010051863000160', 'hr01'))->model());
-        self::assertSame('rf', $r->forAccount($this->account('HR1210010051863000160', 'rf'))->handle());
+        self::assertSame('HR01', $r->forAccount($this->account('HR3799999990000000001', 'hr01'))->model());
+        self::assertSame('rf', $r->forAccount($this->account('HR3799999990000000001', 'rf'))->handle());
     }
 
     public function testAllHandles(): void

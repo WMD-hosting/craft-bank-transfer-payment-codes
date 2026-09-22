@@ -10,7 +10,8 @@ use craft\commerce\models\Transaction;
 /**
  * Outcome of a {@see \wmd\banktransferpaymentcodes\services\Payments::markPaid()}
  * call. `status` is one of: paid, already_paid, underpaid, overpaid, not_found,
- * wrong_gateway, no_transaction, capture_failed.
+ * wrong_gateway, no_transaction, capture_failed, locked (another mark-paid
+ * held the per-order mutex, so nothing was captured).
  */
 final class MarkPaidResult
 {
