@@ -1,0 +1,64 @@
+{#
+  Bank Transfer Payment Codes: one visible code, a "try another" switcher
+  when there is more than one, and the payment details as text.
+
+  {% include 'bank-transfer-payment-codes/_code' with { order: order, context: 'web' } only %}
+  context: 'web' (inline SVG + switcher), 'email' (PNG via emailSrc, no JS), 'pdf' (PNG data URI)
+#}
+{% set t = 'bank-transfer-payment-codes' %}
+{% set context = context ?? 'web' %}
+{% set codes = craft.btpc.codes(order) %}
+{% set details = craft.btpc.details(order) %}
+{% set showDetails = showDetails ?? craft.app.plugins.getPlugin('bank-transfer-payment-codes').settings.showDetails %}
+
+{% if codes|length or details %}
+<div class="btpc" data-btpc>
+  {% if codes|length %}
+    {% for code in codes %}
+      <figure class="btpc__code" data-btpc-code="{{ code.handle }}" {{ loop.first ? '' : 'hidden' }}>
+        {% if context == 'web' %}
+          {{ code.svg()|raw }}
+        {% elseif context == 'email' %}
+          <img src="{{ code.emailSrc() }}" width="{{ code.handle == 'hub3' ? 520 : 220 }}" alt="{{ code.label()|t(t) }}" style="display:block;background:#fff;padding:8px;border:0;">
+        {% else %}
+          <img src="{{ code.pngDataUri() }}" width="{{ code.handle == 'hub3' ? 520 : 220 }}" alt="{{ code.label()|t(t) }}">
+        {% endif %}
+        <figcaption class="btpc__label">{{ code.label()|t(t) }}{% if code.handle == 'paybysquare' and context != 'web' %} · PAY by square{% endif %}</figcaption>
+      </figure>
+    {% endfor %}
+    {% if context == 'web' and codes|length > 1 %}
+      <button type="button" class="btpc__switch" data-btpc-switch>{{ "Won't scan? Try another code"|t(t) }}</button>
+      <script>
+        (function () {
+          var root = document.currentScript.closest('[data-btpc]');
+          var codes = root.querySelectorAll('[data-btpc-code]');
+          var i = 0;
+          root.querySelector('[data-btpc-switch]').addEventListener('click', function () {
+            codes[i].hidden = true; i = (i + 1) % codes.length; codes[i].hidden = false;
+          });
+        })();
+      </script>
+    {% endif %}
+  {% endif %}
+
+  {% if showDetails and details %}
+    <dl class="btpc__details">
+      <dt>{{ 'Recipient'|t(t) }}</dt><dd data-btpc-copy>{{ details.account.holder }}</dd>
+      <dt>IBAN</dt><dd data-btpc-copy>{{ details.account.iban|replace('/(.{4})/', '$1 ')|trim }}</dd>
+      {% if details.account.bic %}<dt>BIC</dt><dd data-btpc-copy>{{ details.account.bic }}</dd>{% endif %}
+      <dt>{{ 'Amount'|t(t) }}</dt><dd data-btpc-copy>{{ details.amount|number_format(2, '.', '') }} {{ details.currency }}</dd>
+      <dt>{{ 'Reference'|t(t) }}</dt><dd data-btpc-copy>{{ details.referenceModel ? details.referenceModel ~ ' ' }}{{ details.reference }}</dd>
+      <dt>{{ 'Purpose'|t(t) }}</dt><dd>{{ details.purpose }}</dd>
+    </dl>
+    {% if context == 'web' %}
+      <script>
+        document.currentScript.previousElementSibling.querySelectorAll('[data-btpc-copy]').forEach(function (el) {
+          var b = document.createElement('button'); b.type = 'button'; b.className = 'btpc__copy'; b.textContent = {{ 'Copy'|t(t)|json_encode|raw }};
+          b.addEventListener('click', function () { navigator.clipboard.writeText(el.firstChild.textContent.trim()); b.textContent = {{ 'Copied'|t(t)|json_encode|raw }}; });
+          el.appendChild(b);
+        });
+      </script>
+    {% endif %}
+  {% endif %}
+</div>
+{% endif %}

@@ -1,0 +1,131 @@
+{# @var plugin \wmd\banktransferpaymentcodes\Plugin #}
+{# @var settings \wmd\banktransferpaymentcodes\models\Settings #}
+{% import '_includes/forms.twig' as forms %}
+{% set t = 'bank-transfer-payment-codes' %}
+
+<h2>{{ 'Bank accounts'|t(t) }}</h2>
+
+{% set schemeOptions = [{ label: 'Auto (by IBAN country)'|t(t), value: 'auto' }] %}
+{% for handle, scheme in plugin.referenceSchemes.all() %}
+    {% set schemeOptions = schemeOptions|merge([{ label: scheme.label(), value: handle }]) %}
+{% endfor %}
+
+{% set accountCols = {
+    key: { heading: 'Key'|t(t), type: 'singleline', width: '7%' },
+    holder: { heading: 'Account holder (legal name)'|t(t), type: 'singleline', width: '16%' },
+    iban: { heading: 'IBAN'|t(t), type: 'singleline', width: '19%', class: 'code' },
+    bic: { heading: 'BIC'|t(t), type: 'singleline', width: '8%' },
+    currency: { heading: 'Currency'|t(t), type: 'singleline', width: '6%' },
+    formats: { heading: 'Formats'|t(t), type: 'singleline', width: '9%', info: 'Comma-separated: epc, hub3, upn, paybysquare'|t(t) },
+    referenceScheme: { heading: 'Reference scheme'|t(t), type: 'select', width: '10%', options: schemeOptions },
+    street: { heading: 'Street'|t(t), type: 'singleline', width: '9%' },
+    city: { heading: 'Postcode and city'|t(t), type: 'singleline', width: '10%', info: 'e.g. 10000 Zagreb'|t(t) },
+    isDefault: { heading: 'Default'|t(t), type: 'lightswitch', width: '5%' },
+} %}
+
+{% set accountRows = [] %}
+{% for row in settings.accounts %}
+    {# The postcode column is gone; fold a separately-stored postcode into the displayed
+       city so a row saved before this change doesn't silently lose it on the next save
+       (the table no longer posts a `postcode` field at all). #}
+    {% set postcode = (row.postcode ?? '')|trim %}
+    {% set city = (row.city ?? '')|trim %}
+    {% set city = (postcode is not empty and not (city starts with postcode)) ? (postcode ~ ' ' ~ city)|trim : city %}
+    {% set accountRows = accountRows|merge([row|merge({ formats: (row.formats ?? [])|join(', '), city: city })|filter((v, k) => k != 'postcode')]) %}
+{% endfor %}
+
+{{ forms.editableTableField({
+    first: true,
+    label: 'Accounts'|t(t),
+    instructions: 'One row per bank account the store can pay into.'|t(t),
+    id: 'accounts', name: 'accounts',
+    cols: accountCols, rows: accountRows,
+    allowAdd: true, allowDelete: true, allowReorder: true,
+    addRowLabel: 'Add an account'|t(t),
+    errors: settings.getErrors('accounts'),
+}) }}
+
+<p class="light">{{ 'Holder must be the exact legal account-holder name. Since 9 October 2025 banks verify the payee name before the customer confirms; a trading name shows a warning.'|t(t) }}</p>
+
+{{ forms.editableTableField({
+    label: 'Store → account'|t(t),
+    instructions: 'Optional. Route a store to a specific account by handle.'|t(t),
+    id: 'storeAccounts', name: 'storeAccounts',
+    cols: { handle: { heading: 'Store handle'|t(t), type: 'singleline' }, account: { heading: 'Account key'|t(t), type: 'singleline' } },
+    rows: settings.storeAccounts,
+    allowAdd: true, allowDelete: true, allowReorder: true,
+    addRowLabel: 'Add a mapping'|t(t),
+}) }}
+
+{{ forms.editableTableField({
+    label: 'Currency → account'|t(t),
+    instructions: 'Optional. Route a currency to a specific account; takes priority over the store mapping.'|t(t),
+    id: 'currencyAccounts', name: 'currencyAccounts',
+    cols: { currency: { heading: 'Currency'|t(t), type: 'singleline', width: '20%' }, account: { heading: 'Account key'|t(t), type: 'singleline' } },
+    rows: settings.currencyAccounts,
+    allowAdd: true, allowDelete: true, allowReorder: true,
+    addRowLabel: 'Add a mapping'|t(t),
+}) }}
+
+<hr>
+<h2>{{ 'References'|t(t) }}</h2>
+
+{{ forms.textField({
+    label: 'Purpose text'|t(t),
+    instructions: 'Printed as the payment purpose; {number} is the order reference, {shortNumber} the first 7 characters of the order number.'|t(t),
+    id: 'purposeTemplate', name: 'purposeTemplate', value: settings.purposeTemplate, errors: settings.getErrors('purposeTemplate'),
+}) }}
+
+<hr>
+<h2>{{ 'Rendering'|t(t) }}</h2>
+
+{{ forms.selectField({
+    label: 'Email images'|t(t),
+    instructions: 'Embedded attaches the PNG to the message (works in Gmail and Outlook). Hosted links to a signed URL on this site.'|t(t),
+    id: 'emailMode', name: 'emailMode', value: settings.emailMode,
+    options: [{ label: 'Embedded (CID)'|t(t), value: 'embedded' }, { label: 'Hosted URL'|t(t), value: 'hosted' }],
+}) }}
+
+{{ forms.textField({
+    label: 'Code size'|t(t), instructions: 'PNG size in pixels.'|t(t),
+    id: 'codeSize', name: 'codeSize', value: settings.codeSize, type: 'number', size: 5, errors: settings.getErrors('codeSize'),
+}) }}
+
+{{ forms.lightswitchField({
+    label: 'Show payment details as text'|t(t),
+    instructions: 'The shipped partial prints holder, IBAN, amount and reference next to the code. Half the eurozone cannot scan; keep this on.'|t(t),
+    id: 'showDetails', name: 'showDetails', on: settings.showDetails,
+}) }}
+
+{{ forms.lightswitchField({
+    label: 'Force EPC version 001 with BIC'|t(t),
+    instructions: 'Some scanners reject the shorter version 002 EPC QR that omits the BIC. Turn this on if customers report scan failures.'|t(t),
+    id: 'epcForceBic', name: 'epcForceBic', on: settings.epcForceBic,
+}) }}
+
+<hr>
+<h2>{{ 'Payments'|t(t) }}</h2>
+
+{{ forms.textField({
+    label: 'Amount tolerance'|t(t),
+    instructions: 'Difference between the received amount and the outstanding balance that still counts as paid. 0.00 means exact.'|t(t),
+    id: 'amountTolerance', name: 'amountTolerance', value: settings.amountTolerance, size: 6, errors: settings.getErrors('amountTolerance'),
+}) }}
+
+{{ forms.selectField({
+    label: 'Order status after payment'|t(t),
+    instructions: 'Optional. Set when an order is marked paid through the plugin.'|t(t),
+    id: 'paidOrderStatusId', name: 'paidOrderStatusId', value: settings.paidOrderStatusId,
+    options: [{ label: 'Keep Commerce default'|t(t), value: '' }]|merge(craft.commerce.orderStatuses.getAllOrderStatuses()|map(s => { label: s.name, value: s.id })),
+}) }}
+
+<hr>
+<h2>{{ 'Storefront'|t(t) }}</h2>
+
+{{ forms.elementSelectField({
+    label: 'Logo'|t(t),
+    instructions: 'Shown next to the payment method; available in templates as craft.btpc.logo. The plugin ships a neutral default.'|t(t),
+    id: 'logoId', name: 'logoId',
+    elements: settings.logoId ? craft.assets.id(settings.logoId).all() : [],
+    elementType: 'craft\\elements\\Asset', criteria: { kind: 'image' }, limit: 1, viewMode: 'large',
+}) }}

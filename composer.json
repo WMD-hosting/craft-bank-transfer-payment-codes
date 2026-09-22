@@ -1,0 +1,50 @@
+{
+    "name": "wmd/craft-bank-transfer-payment-codes",
+    "description": "Bank transfer gateway for Craft Commerce with scannable payment codes: EPC QR (SEPA, GiroCode), HUB-3 PDF417, UPN QR, PAY by square, national payment references, one mark-paid API.",
+    "type": "craft-plugin",
+    "license": "MIT",
+    "keywords": ["craft", "craftcms", "craft-plugin", "craft-commerce", "commerce", "payment", "gateway", "bank-transfer", "sepa", "epc-qr", "girocode", "hub3", "upn-qr", "pay-by-square", "qr-code", "pdf417"],
+    "support": {
+        "docs": "https://github.com/WMD-hosting/craft-bank-transfer-payment-codes/blob/main/README.md",
+        "issues": "https://github.com/WMD-hosting/craft-bank-transfer-payment-codes/issues"
+    },
+    "authors": [{ "name": "WMD", "homepage": "https://wmd.hr/" }],
+    "require": {
+        "php": "^8.2",
+        "ext-gd": "*",
+        "ext-iconv": "*",
+        "ext-mbstring": "*",
+        "bacon/bacon-qr-code": "^3.0",
+        "craftcms/cms": "^5.0.0",
+        "craftcms/commerce": "^5.0.0",
+        "tecnickcom/tc-lib-barcode": "^2.4"
+    },
+    "require-dev": {
+        "craftcms/ecs": "dev-main",
+        "craftcms/phpstan": "dev-main",
+        "phpstan/phpstan": "^2.0",
+        "phpunit/phpunit": "^10.5"
+    },
+    "autoload": { "psr-4": { "wmd\\banktransferpaymentcodes\\": "src/" } },
+    "autoload-dev": { "psr-4": { "wmd\\banktransferpaymentcodes\\tests\\": "tests/" } },
+    "extra": {
+        "handle": "bank-transfer-payment-codes",
+        "name": "Bank Transfer Payment Codes",
+        "developer": "WMD",
+        "developerUrl": "https://wmd.hr/",
+        "documentationUrl": "https://github.com/WMD-hosting/craft-bank-transfer-payment-codes/blob/main/README.md",
+        "changelogUrl": "https://raw.githubusercontent.com/WMD-hosting/craft-bank-transfer-payment-codes/main/CHANGELOG.md",
+        "class": "wmd\\banktransferpaymentcodes\\Plugin"
+    },
+    "scripts": {
+        "test": "phpunit",
+        "check-cs": "ecs check --ansi",
+        "fix-cs": "ecs check --ansi --fix",
+        "phpstan": "phpstan --memory-limit=1G"
+    },
+    "config": {
+        "sort-packages": true,
+        "platform": { "php": "8.2" },
+        "allow-plugins": { "yiisoft/yii2-composer": true, "craftcms/plugin-installer": true }
+    }
+}

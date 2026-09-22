@@ -1,0 +1,91 @@
+# Bank Transfer Payment Codes - llms.txt
+
+Flat reference. Full prose is in README.md. Twig variable: craft.bankTransferPaymentCodes, alias craft.btpc.
+
+## Twig functions (wmd\banktransferpaymentcodes\variables\BtpcVariable)
+
+codes(order: craft\commerce\elements\Order, accountKey: ?string = null): PaymentCode[]
+codesFor(details: array{account?: string, amount: float, currency?: string, reference?: string, structured?: bool, purpose?: string, number?: string}): PaymentCode[] - when details.number is given, emailSrc() is pre-filled with cid:btpc-{number}-{format}.png, same convention as codes(order); EmailEmbedder only attaches that CID part to a Commerce order email when number equals that email's own order number, so for any other document either use hostedUrl() or attach the PNG yourself
+details(order: craft\commerce\elements\Order): ?PaymentDetails
+reference(order: craft\commerce\elements\Order): ?PaymentReference
+account(order: craft\commerce\elements\Order): ?BankAccount
+hostedUrl(order: craft\commerce\elements\Order, handle: string): string
+logo (getLogo()): ?craft\elements\Asset
+defaultLogoSvg (getDefaultLogoSvg()): string
+
+## Value objects
+
+PaymentCode { format: FormatInterface, payload: string } - handle(): string; label(): string; svg(): string; png(): string; pngDataUri(): string; emailSrc(): string; setEmailSrc(src: string): void
+PaymentDetails { account: BankAccount, amount: float, currency: string, reference: string, referenceModel: string, referenceIsStructured: bool, purpose: string, orderNumber: string, payerName: ?string, payerStreet: ?string, payerCity: ?string, payerPostcode: ?string } - cents(): string
+PaymentReference { orderId: int, accountKey: string, scheme: string, model: string, reference: string, isStructured: bool }
+BankAccount { key: string, holder: string, iban: string, bic: string, currency: string, formats: string[], referenceScheme: string, purposeTemplate: ?string, isDefault: bool, street: string, postcode: string, city: string } - country(): string; validationErrors(): array<string, string>
+MarkPaidResult { ok: bool, status: string, order: ?craft\commerce\elements\Order, transaction: ?craft\commerce\models\Transaction, message: string } - status one of: paid|already_paid|underpaid|overpaid|not_found|wrong_gateway|no_transaction|capture_failed
+
+## Settings (wmd\banktransferpaymentcodes\models\Settings)
+
+accounts: array<int, array> - bank account rows, default []
+storeAccounts: array<int, array{handle?: string, account?: string}> - default []
+currencyAccounts: array<int, array{currency?: string, account?: string}> - default []
+purposeTemplate: string, required, default 'Order {number}', tokens: {number}, {shortNumber} - plugin-level default; a per-account override set in PHP wins over the plugin setting (BankAccount::$purposeTemplate, PHP/API only, not in the CP table)
+emailMode: string, 'embedded'|'hosted', default 'embedded'
+codeSize: int, pixels, default 300, range 120-1200
+showDetails: bool, default true
+amountTolerance: float, default 0.0
+paidOrderStatusId: ?int, default null
+logoId: array, asset id, default []
+epcForceBic: bool, default false
+
+## Bank account row (settings.accounts[n], wmd\banktransferpaymentcodes\models\BankAccount::fromArray())
+
+key: string, required, /^[a-z0-9_-]+$/i
+holder: string, required, exact legal account-holder name
+iban: string, required, valid mod-97 checksum
+bic: string, required when the IBAN is outside the EEA
+currency: string, default 'EUR'
+formats: string, space/comma separated format handles, at least one required, each must be a registered format handle
+referenceScheme: string, 'auto' or a registered reference-scheme handle, default 'auto'
+purposeTemplate: ?string, default null, tokens: {number}, {shortNumber} - not in the CP table; a per-account override set in PHP wins over Settings::purposeTemplate for this account
+isDefault: bool, default false
+street: string, postcode: string, city: string - CP table exposes only street and a combined "Postcode and city" (mapped to the city property); postcode remains a settable property for PHP/API callers
+
+## Events
+
+wmd\banktransferpaymentcodes\formats\Formats::EVENT_REGISTER_FORMATS = 'registerFormats' - payload: wmd\banktransferpaymentcodes\events\RegisterComponentsEvent { components: array<string, FormatInterface> }
+wmd\banktransferpaymentcodes\references\ReferenceSchemes::EVENT_REGISTER_REFERENCE_SCHEMES = 'registerReferenceSchemes' - payload: wmd\banktransferpaymentcodes\events\RegisterComponentsEvent { components: array<string, ReferenceSchemeInterface> }
+wmd\banktransferpaymentcodes\services\Payments::EVENT_AFTER_MARK_PAID = 'afterMarkPaid' - payload: wmd\banktransferpaymentcodes\events\MarkPaidEvent { result: MarkPaidResult, source: string }
+
+## Service methods
+
+wmd\banktransferpaymentcodes\services\Accounts::all(): array<string, BankAccount>
+wmd\banktransferpaymentcodes\services\Accounts::get(key: string): ?BankAccount
+wmd\banktransferpaymentcodes\services\Accounts::default(): ?BankAccount
+wmd\banktransferpaymentcodes\services\Accounts::select(storeHandle: ?string, currency: string, overrideKey: ?string = null): ?BankAccount
+wmd\banktransferpaymentcodes\services\Accounts::forOrder(order: Order): ?BankAccount
+wmd\banktransferpaymentcodes\services\References::forOrder(order: Order): ?PaymentReference
+wmd\banktransferpaymentcodes\services\References::ensure(order: Order): ?PaymentReference - generates and stores the reference on first call, returns the stored row after
+wmd\banktransferpaymentcodes\services\References::findOrder(reference: string): ?Order
+wmd\banktransferpaymentcodes\services\References::candidates(reference: string, schemes: ReferenceSchemeInterface[]): string[] - static
+wmd\banktransferpaymentcodes\services\Codes::forDetails(details: PaymentDetails, strict: bool = false): PaymentCode[] - throws FormatException in strict mode
+wmd\banktransferpaymentcodes\services\Codes::forOrder(order: Order, account: ?BankAccount = null, strict: ?bool = null): PaymentCode[] - strict defaults to devMode
+wmd\banktransferpaymentcodes\services\Codes::detailsFor(order: Order, account: ?BankAccount = null): ?PaymentDetails
+wmd\banktransferpaymentcodes\services\Codes::order(handles: string[], country: string): string[] - country preference sort
+wmd\banktransferpaymentcodes\services\Payments::markPaid(orderOrReference: Order|string, amount: ?float = null, source: string = 'api', note: string = ''): MarkPaidResult
+wmd\banktransferpaymentcodes\formats\Formats::all(): array<string, FormatInterface> - epc, hub3, upn, paybysquare plus any registered via EVENT_REGISTER_FORMATS
+wmd\banktransferpaymentcodes\formats\Formats::get(handle: string): FormatInterface - throws InvalidArgumentException on an unknown handle
+wmd\banktransferpaymentcodes\references\ReferenceSchemes::all(): array<string, ReferenceSchemeInterface> - rf, hr00, hr01, si12, be, fi, sk plus any registered via EVENT_REGISTER_REFERENCE_SCHEMES
+wmd\banktransferpaymentcodes\references\ReferenceSchemes::get(handle: string): ReferenceSchemeInterface - throws InvalidArgumentException on an unknown handle
+wmd\banktransferpaymentcodes\references\ReferenceSchemes::forAccount(account: BankAccount): ReferenceSchemeInterface - resolves 'auto' by IBAN country
+
+## Placement snippets
+
+```twig
+{% include 'bank-transfer-payment-codes/_code' with { order: order, context: 'web' } only %}
+```
+
+```twig
+{% include 'bank-transfer-payment-codes/_code' with { order: order, context: 'email' } only %}
+```
+
+```twig
+{% include 'bank-transfer-payment-codes/_code' with { order: order, context: 'pdf' } only %}
+```
