@@ -4,6 +4,8 @@
 
   {% include 'bank-transfer-payment-codes/_code' with { order: order, context: 'web' } only %}
   context: 'web' (inline SVG + switcher), 'email' (PNG via emailSrc, no JS), 'pdf' (PNG data URI)
+  The email image keeps its width attribute for Outlook and shrinks to the column elsewhere; the
+  white padding sits on a wrapper so a wide column still shows the code at full size.
 #}
 {% set t = 'bank-transfer-payment-codes' %}
 {% set context = context ?? 'web' %}
@@ -15,11 +17,13 @@
 <div class="btpc" data-btpc>
   {% if codes|length %}
     {% for code in codes %}
-      <figure class="btpc__code" data-btpc-code="{{ code.handle }}" {{ loop.first ? '' : 'hidden' }}>
+      <figure class="btpc__code" data-btpc-code="{{ code.handle }}" {{ loop.first ? '' : 'hidden' }}{% if context == 'email' %} style="margin:0 0 16px;"{% endif %}>
         {% if context == 'web' %}
           {{ code.svg()|raw }}
         {% elseif context == 'email' %}
-          <img src="{{ code.emailSrc() }}" width="{{ code.handle == 'hub3' ? 520 : 220 }}" alt="{{ code.label()|t(t) }}" style="display:block;background:#fff;padding:8px;border:0;">
+          <div style="display:inline-block;vertical-align:top;max-width:100%;box-sizing:border-box;background:#fff;padding:8px;">
+            <img src="{{ code.emailSrc() }}" width="{{ code.handle == 'hub3' ? 520 : 220 }}" alt="{{ code.label()|t(t) }}" style="display:block;max-width:100%;height:auto;border:0;">
+          </div>
         {% else %}
           <img src="{{ code.pngDataUri() }}" width="{{ code.handle == 'hub3' ? 520 : 220 }}" alt="{{ code.label()|t(t) }}">
         {% endif %}

@@ -1,5 +1,10 @@
 # Release Notes for Bank Transfer Payment Codes
 
+## 1.0.2 - 2026-10-17
+
+- Fixed: in emails the payment code image kept its full width (520 px for HUB-3) on narrow screens, which made the whole email wider than a phone. It now shrinks to the column; the `width` attribute stays for Outlook.
+- Fixed: in emails the code's figure kept the browser's default 40 px side margins, so the code rendered 80 px narrower than the column. The figure has no side margins now, and the white padding behind the code sits on a wrapper instead of on the image, so it doesn't eat into the code's width.
+
 ## 1.0.1 - 2026-09-22
 
 > {warning} This release adds a unique index on the stored payment references. If two orders already share a reference, the migration stops and names them so you can fix the rows before running it again.
