@@ -62,4 +62,50 @@ final class Hub3Pdf417Test extends TestCase
         self::assertStringContainsString('<svg', $f->svg($payload, 400));
         self::assertSame("\x89PNG", substr($f->png($payload, 400), 0, 4));
     }
+
+    /**
+     * A phone has to read the barcode off a page or PDF shown on screen (T 996399): a symbol about 190 modules
+     * across, about twice as wide as tall, with every bar in one SVG path. Touching rects anti-alias into grey
+     * seams that alone made the code unreadable at sizes where the path still reads.
+     */
+    public function testSvgIsOneCoarsePath(): void
+    {
+        $f = new Hub3Pdf417();
+        $payload = $f->payload($this->details());
+        $svg = $f->svg($payload, 300);
+
+        self::assertSame(1, substr_count($svg, '<path'));
+        self::assertSame(1, substr_count($svg, '<rect'), 'only the white background is a rect');
+        self::assertStringContainsString('<desc>' . htmlspecialchars($payload, ENT_XML1) . '</desc>', $svg);
+
+        self::assertSame(1, preg_match('/<path[^>]* d="([^"]+)"/', $svg, $path));
+        self::assertGreaterThan(0, preg_match_all('/M([\d.]+) ([\d.]+)h([\d.]+)v([\d.]+)h-\3z/', $path[1], $runs, PREG_SET_ORDER));
+        self::assertSame($path[1], implode('', array_column($runs, 0)), 'the path is nothing but closed runs');
+
+        $module = min(array_map(static fn(array $r): float => (float)$r[3], $runs));
+        $left = min(array_map(static fn(array $r): float => (float)$r[1], $runs));
+        $right = max(array_map(static fn(array $r): float => (float)$r[1] + (float)$r[3], $runs));
+        $top = min(array_map(static fn(array $r): float => (float)$r[2], $runs));
+        $bottom = max(array_map(static fn(array $r): float => (float)$r[2] + (float)$r[4], $runs));
+
+        $columns = ($right - $left) / $module;
+        self::assertLessThanOrEqual(200, $columns);
+        self::assertEqualsWithDelta(2.0, ($right - $left) / ($bottom - $top), 0.4);
+    }
+
+    public function testPngHasTheSvgGeometryOnOpaqueWhite(): void
+    {
+        $f = new Hub3Pdf417();
+        $payload = $f->payload($this->details());
+        $png = imagecreatefromstring($f->png($payload, 300));
+        self::assertNotFalse($png);
+
+        self::assertSame(1, preg_match('/<svg[^>]* width="([\d.]+)" height="([\d.]+)"/', $f->svg($payload, 300), $size));
+        self::assertSame([(int)$size[1], (int)$size[2]], [imagesx($png), imagesy($png)]);
+
+        // The quiet zone is white pixels, not transparency that a dark mail client paints over.
+        self::assertSame(-1, imagecolortransparent($png));
+        $corner = imagecolorsforindex($png, imagecolorat($png, 0, 0));
+        self::assertSame(['red' => 255, 'green' => 255, 'blue' => 255, 'alpha' => 0], $corner);
+    }
 }

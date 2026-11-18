@@ -303,11 +303,14 @@ Event::on(Payments::class, Payments::EVENT_AFTER_MARK_PAID, function(MarkPaidEve
 
 ## A note on Blitz
 
-The order confirmation page (`/checkout/complete?number=...`) is safe under
-Blitz's default settings: a query string on the URL means Blitz does not
-cache the request at all. If you turn on `queryStringCaching`, exclude
-`checkout/*` explicitly, or every visitor will be served the first paid
-customer's confirmation page and payment codes.
+The order confirmation page shows one visitor's order and payment codes, so it
+must never be cached. A confirmation URL with `?number=...` is safe under
+Blitz's default settings (Blitz does not cache a request with a query
+string), but one that reads the order from the session has no query string:
+exclude `checkout/*` in Blitz, or turn caching off in the template
+(`craft.blitz.options({ cachingEnabled: false })`), or every visitor will be
+served the first paid customer's confirmation page and payment codes. The same
+applies if you turn on `queryStringCaching`.
 
 ## Compatibility
 

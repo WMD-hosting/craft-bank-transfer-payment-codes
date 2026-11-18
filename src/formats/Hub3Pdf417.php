@@ -73,9 +73,35 @@ final class Hub3Pdf417 implements FormatInterface
         ]);
     }
 
+    /**
+     * Every bar goes into one path, merged across equal consecutive rows. tc-lib's own SVG draws a <rect> per
+     * run, and renderers anti-alias the seams between touching rects into grey lines that phones misread when
+     * the code is shown on a screen.
+     */
     public function svg(string $payload, int $size): string
     {
-        return $this->barcode($payload, $size)->getSvgCode();
+        $barcode = $this->barcode($payload, $size);
+        $a = $barcode->getArray();
+        $rows = array_map(static fn(array $row): string => implode('', $row), $barcode->getGridArray('0', '1'));
+        $num = static fn(float $v): string => rtrim(rtrim(sprintf('%.4F', $v), '0'), '.');
+        $d = '';
+        for ($y = 0, $n = count($rows); $y < $n; $y = $end) {
+            $end = $y + 1;
+            while ($end < $n && $rows[$end] === $rows[$y]) {
+                $end++;
+            }
+            preg_match_all('/1+/', $rows[$y], $runs, PREG_OFFSET_CAPTURE);
+            foreach ($runs[0] as [$run, $x]) {
+                $w = $num(strlen($run) * $a['width_ratio']);
+                $d .= 'M' . $num($a['padding']['L'] + $x * $a['width_ratio']) . ' ' . $num($a['padding']['T'] + $y * $a['height_ratio'])
+                    . 'h' . $w . 'v' . $num(($end - $y) * $a['height_ratio']) . 'h-' . $w . 'z';
+            }
+        }
+        [$width, $height] = [$num($a['full_width']), $num($a['full_height'])];
+
+        return '<svg xmlns="http://www.w3.org/2000/svg" width="' . $width . '" height="' . $height . '" viewBox="0 0 ' . $width . ' ' . $height . '">'
+            . '<desc>' . htmlspecialchars($payload, ENT_XML1 | ENT_DISALLOWED | ENT_SUBSTITUTE, 'UTF-8') . '</desc>'
+            . '<rect width="' . $width . '" height="' . $height . '" fill="#ffffff"/><path fill="#000000" d="' . $d . '"/></svg>';
     }
 
     public function png(string $payload, int $size): string
@@ -83,18 +109,23 @@ final class Hub3Pdf417 implements FormatInterface
         return $this->barcode($payload, $size)->getPngData(false);
     }
 
+    /**
+     * Coarse enough for a phone to read off a page or PDF on screen (T 996399).
+     *
+     * 'PDF417,<aspect ratio>,<error correction level>': HUB fixes level 4. tc-lib picks the column count for
+     * rows 2 modules high; drawn with rows twice the module width (height -2m) they are 4 modules high, so
+     * aspect 4 is a 2:1 symbol of about 190 modules across. The previous aspect 9 with 6-module rows gave
+     * about 260 modules, too dense for a phone camera at the sizes the code is shown.
+     *
+     * Negative width/height are pixels per module column/row, so every bar lands on whole pixels in the PNG.
+     * One module per 100 px of $size keeps the PNG at about the width it had (590 px at the default 300).
+     */
     private function barcode(string $payload, int $size): BarcodeModel
     {
-        // 'PDF417,<aspect ratio>,<error correction level>': HUB fixes level 4.
-        // Aspect ratio 9 approximates the HUB symbol's real 58x26mm print
-        // geometry (~2.2:1); ratio 3 (the tc-lib default) packs the columns
-        // into a near-square symbol instead. Negative width/height are
-        // module-size multipliers (pixels per module column/row); the
-        // caller's target width is honoured by scaling the module width,
-        // with the row height kept at 3x the module (independent of the
-        // PDF417 aspect-ratio param, which only controls column/row count).
-        $module = max(1, (int)round($size / 200));
-        return (new Barcode())->getBarcodeObj('PDF417,9,4', $payload, -$module, -$module * 3, 'black', [8, 8, 8, 8]);
+        $module = max(1, (int)round($size / 100));
+        return (new Barcode())
+            ->getBarcodeObj('PDF417,4,4', $payload, -$module, -2 * $module, 'black', [8, 8, 8, 8])
+            ->setBackgroundColor('white');
     }
 
     /** Transliterate what the HUB character set forbids, replace the rest with spaces, cut to length. */

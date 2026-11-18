@@ -1,5 +1,11 @@
 # Release Notes for Bank Transfer Payment Codes
 
+## 1.0.3 - 2026-11-18
+
+- Fixed: banking apps could not read the HUB-3 barcode from a screen, for example the order PDF opened on a phone or a computer. The symbol is now about twice as wide as tall and about 190 modules across instead of about 260, so each module is larger at the same width. Error correction stays at level 4 and the encoded data is unchanged. On the order PDF the smallest page width that still reads went from 840 to 360 px.
+- Fixed: the inline SVG drew each bar as its own rect, and the anti-aliased seams between touching rects made the code harder to read. All bars are now one path.
+- Changed: the HUB-3 PNG has a white background instead of a transparent one, so a dark email client cannot paint over the quiet zone. At the same width the code is about a quarter taller than before.
+
 ## 1.0.2 - 2026-10-17
 
 - Fixed: in emails the payment code image kept its full width (520 px for HUB-3) on narrow screens, which made the whole email wider than a phone. It now shrinks to the column; the `width` attribute stays for Outlook.
